@@ -1,0 +1,2 @@
+﻿class_name,review_count,avg_rating,recommend_rate,negative_rate,avg_positive_feedback,anomaly_type,priority,suggested_action
+Trend,118,3.8389830508474576,0.7457627118644068,0.17796610169491525,3.3983050847457625,平均评分偏低、推荐率偏低、负向评论占比偏高,高,优先查看低分评论，定位影响评分的核心体验问题；分析用户不推荐原因，重点排查商品预期、详情页表达和售后体验；结合差评关键词和主题归因，优先处理高频差评原因
