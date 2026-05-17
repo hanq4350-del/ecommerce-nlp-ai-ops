@@ -2,7 +2,7 @@ import os
 import re
 import pandas as pd
 import streamlit as st
-
+import math
 
 # ========== 1. 页面基础设置 ==========
 st.set_page_config(
@@ -282,14 +282,20 @@ data = load_data()
 
 
 # ========== 6. 页面标题 ==========
-st.title("🛍️ 电商评论洞察与 AI 运营策略生成系统")
+st.title("🛍️ 电商评论洞察与运营诊断看板")
 
 st.markdown(
     """
-    **项目目标：** 基于 NLP 评论分析与 Prompt 策略生成，辅助运营人员快速识别用户痛点并生成优化方案。  
+    **项目定位：**  
+    本项目面向电商评论数据，构建从用户反馈监控、异常类目识别、NLP 问题归因、
+    运营策略生成到 A/B 实验验证的完整数据分析闭环。
 
-    **项目逻辑：**  
-    指标监控 → 异常识别 → NLP 问题归因 → Prompt 结构化 → AI 运营策略生成
+    **项目目标：**  
+    将非结构化用户评论转化为可量化、可归因、可行动的业务指标，
+    帮助运营人员快速识别用户痛点，并为商品优化、详情页优化、客服话术和用户触达提供决策支持。
+
+    **分析链路：**  
+    数据清洗 → 指标监控 → 类目异常识别 → NLP 问题归因 → 运营策略生成 → A/B 效果验证 → AI 辅助输出
     """
 )
 
@@ -297,120 +303,152 @@ st.divider()
 
 
 # ========== 7. 数据概览 ==========
+# ========== 一、项目概览 ==========
 st.header("一、项目概览")
 
+st.markdown(
+    """
+    本模块用于快速判断评论数据的整体健康度，主要从评论规模、用户满意度、
+    推荐意愿、正负向反馈和异常类目数量几个维度进行监控。
+    """
+)
+
 if "clean_reviews" in data:
-    clean_reviews = data["clean_reviews"]
+    clean_reviews = data["clean_reviews"].copy()
 
+    # ===== 1. 核心指标计算 =====
     total_reviews = clean_reviews.shape[0]
-    avg_rating = round(clean_reviews["rating"].mean(), 2) if "rating" in clean_reviews.columns else "-"
-    recommend_rate = round(clean_reviews["recommended"].mean() * 100, 2) if "recommended" in clean_reviews.columns else "-"
-    negative_rate = round((clean_reviews["sentiment"] == "negative").mean() * 100, 2) if "sentiment" in clean_reviews.columns else "-"
-    positive_rate = round((clean_reviews["sentiment"] == "positive").mean() * 100, 2) if "sentiment" in clean_reviews.columns else "-"
-    anomaly_count = data["anomaly_analysis"].shape[0] if "anomaly_analysis" in data else 0
 
+    avg_rating = (
+        round(clean_reviews["rating"].mean(), 2)
+        if "rating" in clean_reviews.columns
+        else "-"
+    )
+
+    recommend_rate = (
+        round(clean_reviews["recommended"].mean() * 100, 2)
+        if "recommended" in clean_reviews.columns
+        else "-"
+    )
+
+    if "sentiment" in clean_reviews.columns:
+        sentiment_series = clean_reviews["sentiment"].astype(str).str.lower()
+        negative_rate = round((sentiment_series == "negative").mean() * 100, 2)
+        positive_rate = round((sentiment_series == "positive").mean() * 100, 2)
+    else:
+        negative_rate = "-"
+        positive_rate = "-"
+
+    anomaly_count = (
+        data["anomaly_analysis"].shape[0]
+        if "anomaly_analysis" in data and not data["anomaly_analysis"].empty
+        else 0
+    )
+
+    # ===== 2. 核心指标展示 =====
     col1, col2, col3, col4, col5, col6 = st.columns(6)
+
     col1.metric("评论总量", f"{total_reviews:,}")
     col2.metric("平均评分", avg_rating)
-    col3.metric("推荐率", f"{recommend_rate}%")
-    col4.metric("正向评论占比", f"{positive_rate}%")
-    col5.metric("负向评论占比", f"{negative_rate}%")
+    col3.metric("推荐率", f"{recommend_rate}%" if recommend_rate != "-" else "-")
+    col4.metric("正向评论占比", f"{positive_rate}%" if positive_rate != "-" else "-")
+    col5.metric("负向评论占比", f"{negative_rate}%" if negative_rate != "-" else "-")
     col6.metric("异常类目数", anomaly_count)
+
+    # ===== 3. 整体业务解读 =====
+    if avg_rating != "-" and recommend_rate != "-" and negative_rate != "-":
+        st.info(
+            f"整体来看，当前样本共包含 **{total_reviews:,}** 条评论，"
+            f"平均评分为 **{avg_rating}**，推荐率为 **{recommend_rate}%**，"
+            f"正向评论占比为 **{positive_rate}%**，负向评论占比为 **{negative_rate}%**。"
+            "整体反馈偏正向，但仍需要重点关注负向评论中反复出现的用户痛点。"
+        )
+    else:
+        st.info(
+            "当前已完成评论数据加载，但部分字段缺失，建议检查 rating、recommended、sentiment 等字段是否完整。"
+        )
 
 else:
     st.warning("未找到 clean_reviews.csv，请先运行 main.py 生成分析结果。")
 
 
+# ===== 4. 高频差评主题提示 =====
 if "topic_summary" in data and not data["topic_summary"].empty:
     top_topic = data["topic_summary"].iloc[0]
-    topic_name = top_topic.get("negative_topic_cn", top_topic.get("negative_topic", "未知主题"))
+    topic_name = top_topic.get(
+        "negative_topic_cn",
+        top_topic.get("negative_topic", "未知主题")
+    )
     topic_count = top_topic.get("review_count", "-")
-    st.info(f"当前最高频差评主题：**{topic_name}**，涉及评论数：**{topic_count}**。")
+
+    st.info(
+        f"当前最高频差评主题集中在：**{topic_name}**，"
+        f"涉及评论数：**{topic_count}**。"
+        "这说明用户痛点已经不是单一差评，而是集中在可归因的具体问题上，"
+        "后续需要结合关键词和主题分布进一步定位原因。"
+    )
 
 
+# ===== 5. 异常类目提示 =====
 if "anomaly_analysis" in data and not data["anomaly_analysis"].empty:
     top_anomaly = data["anomaly_analysis"].iloc[0]
+
+    anomaly_class = top_anomaly.get("class_name", "未知类目")
+    anomaly_type = top_anomaly.get("anomaly_type", "未知")
+    priority = top_anomaly.get("priority", "未知")
+
     st.warning(
-        f"当前优先关注异常类目：**{top_anomaly.get('class_name', '未知类目')}**；"
-        f"异常类型：**{top_anomaly.get('anomaly_type', '未知')}**；"
-        f"优先级：**{top_anomaly.get('priority', '未知')}**。"
+        f"异常识别结果：**{anomaly_class}** 类目被识别为当前优先关注对象；"
+        f"异常类型为：**{anomaly_type}**；"
+        f"优先级为：**{priority}**。"
+        "建议优先下钻该类目的负向评论主题，判断问题主要来自尺码、面料、图片不符、价格感知还是其他体验问题。"
     )
 
 st.divider()
+# ========== 8. 指标口径说明 ==========
+st.markdown("---")
+st.markdown("## 二、指标口径说明")
 
+with st.expander("查看核心指标计算口径", expanded=False):
+    metric_def = pd.DataFrame([
+        {
+            "指标": "评论总量",
+            "计算口径": "评论数据去重清洗后的总评论数",
+            "业务含义": "衡量样本规模和用户反馈活跃度"
+        },
+        {
+            "指标": "平均评分",
+            "计算口径": "评分字段的算术平均值",
+            "业务含义": "衡量整体用户满意度"
+        },
+        {
+            "指标": "推荐率",
+            "计算口径": "推荐评论数 / 评论总数",
+            "业务含义": "衡量用户愿意推荐商品的比例"
+        },
+        {
+            "指标": "正向评论占比",
+            "计算口径": "正向评论数 / 评论总数",
+            "业务含义": "衡量整体正向反馈水平"
+        },
+        {
+            "指标": "负向评论占比",
+            "计算口径": "负向评论数 / 评论总数",
+            "业务含义": "衡量用户不满程度，是异常识别的重要指标"
+        },
+        {
+            "指标": "异常类目",
+            "计算口径": "平均评分偏低、推荐率偏低或负向评论占比偏高的类目",
+            "业务含义": "帮助运营优先定位需要干预的商品类目"
+        },
+        {
+            "指标": "负向主题占比",
+            "计算口径": "某一问题主题的负向评论数 / 全部负向评论数",
+            "业务含义": "识别差评主要来自尺码、面料、图片不符还是价格等问题"
+        }
+    ])
 
-# ========== 8. AI 运营策略生成 Demo ==========
-st.header("二、AI 运营策略生成 Demo")
-
-st.markdown(
-    """
-    输入一条具体用户评论后，系统会自动识别情感倾向与用户痛点，
-    并基于 Prompt 生成详情页优化、客服回复话术和用户触达策略。  
-    支持 **中文评论、英文评论、中英混合评论**。
-    """
-)
-
-example_comment = (
-    "这件连衣裙款式还不错，但是尺码偏小，面料有点薄，颜色和图片也不太一样。"
-)
-
-comment_input = st.text_area(
-    "请输入一条用户评论：",
-    value=example_comment,
-    height=120
-)
-
-product_category = st.selectbox(
-    "请选择商品类别：",
-    [
-        "连衣裙 / Dresses",
-        "针织衫 / Knits",
-        "衬衫 / Blouses",
-        "裤子 / Pants",
-        "毛衣 / Sweaters",
-        "夹克 / Jackets",
-        "半身裙 / Skirts",
-        "未知 / Unknown"
-    ]
-)
-
-if st.button("生成 AI 运营策略"):
-    topics = identify_topics(comment_input)
-    sentiment = judge_sentiment(comment_input)
-    priority = judge_priority(topics, sentiment)
-    roles = match_roles(topics)
-    strategy = generate_strategy(comment_input, product_category, topics, sentiment, priority)
-    prompt = generate_prompt(comment_input, product_category, topics, sentiment, priority)
-
-    st.subheader("1. NLP 识别结果")
-
-    result_col1, result_col2, result_col3, result_col4 = st.columns(4)
-
-    with result_col1:
-        st.success(f"情感判断：{sentiment}")
-
-    with result_col2:
-        st.info(f"问题主题：{'、'.join(topics)}")
-
-    with result_col3:
-        st.warning(f"运营优先级：{priority}")
-
-    with result_col4:
-        st.write(f"适合处理角色：{roles}")
-
-    st.subheader("2. AI 运营策略建议")
-
-    st.markdown(f"**用户核心痛点：** {strategy['用户核心痛点']}")
-    st.markdown(f"**商品详情页优化建议：** {strategy['商品详情页优化建议']}")
-    st.markdown(f"**客服回复话术：** {strategy['客服回复话术']}")
-    st.markdown(f"**用户触达/运营策略：** {strategy['用户触达/运营策略']}")
-    st.markdown(f"**后续复盘指标：** {strategy['后续复盘指标']}")
-
-    with st.expander("查看可输入大模型的 Prompt 模板"):
-        st.code(prompt, language="text")
-
-st.divider()
-
+    st.dataframe(metric_def, use_container_width=True)
 
 # ========== 9. 类目异常识别 ==========
 st.header("三、类目异常识别 / 异动分析")
@@ -591,3 +629,219 @@ st.markdown(
     结合大模型生成思路模拟 AI 辅助商品运营决策场景。
     """
 )
+# ========== 13. A/B 实验 ==========
+st.markdown("---")
+st.markdown("## 七、A/B 实验：运营策略效果验证")
+st.caption(
+    "说明：当前 A/B 实验数据为模拟数据，用于展示策略效果验证方法。真实业务中可替换为线上实验分组后的曝光、点击、加购、支付、差评和退货数据。"
+)
+st.markdown(
+    """
+    该模块用于验证运营策略是否有效。  
+    例如：在 NLP 分析中发现“尺码问题”是高频差评主题后，可以设计 A/B 实验验证
+    “优化尺码表、增加模特试穿信息、补充尺码推荐说明”是否能提升转化并降低差评。
+    """
+)
+
+with st.expander("A/B 实验设计说明", expanded=True):
+    ab_design = pd.DataFrame([
+        {"项目": "实验背景", "内容": "负向评论中 size、fit、small 等关键词高频出现，说明尺码适配问题明显"},
+        {"项目": "实验假设", "内容": "优化详情页尺码说明后，可以提升加购率、支付转化率，并降低尺码相关差评率"},
+        {"项目": "A组/对照组", "内容": "保留原商品详情页"},
+        {"项目": "B组/实验组", "内容": "增加尺码表、模特身高体重、试穿报告和尺码推荐说明"},
+        {"项目": "核心指标", "内容": "加购率、支付转化率、尺码相关差评率"},
+        {"项目": "护栏指标", "内容": "退货率、平均评分、客单价，防止只提升转化但损害用户体验"}
+    ])
+    st.dataframe(ab_design, use_container_width=True)
+def two_prop_pvalue(success_a, total_a, success_b, total_b):
+    """
+    两比例 z 检验，返回双侧 p-value。
+    不依赖 scipy，方便部署到 Streamlit Cloud。
+    """
+    p_a = success_a / total_a
+    p_b = success_b / total_b
+    p_pool = (success_a + success_b) / (total_a + total_b)
+
+    se = math.sqrt(p_pool * (1 - p_pool) * (1 / total_a + 1 / total_b))
+
+    if se == 0:
+        return 1.0
+
+    z = (p_b - p_a) / se
+
+    # 利用误差函数近似标准正态分布双侧 p 值
+    p_value = math.erfc(abs(z) / math.sqrt(2))
+    return p_value
+
+
+# 这里是模拟实验数据，后续如果有真实数据，可以替换成真实 A/B 数据表
+ab_data = pd.DataFrame([
+    {
+        "指标": "点击率",
+        "A组人数/曝光": 5000,
+        "A组成功数": 410,
+        "B组人数/曝光": 5000,
+        "B组成功数": 455,
+        "方向": "提升越好"
+    },
+    {
+        "指标": "加购率",
+        "A组人数/曝光": 5000,
+        "A组成功数": 625,
+        "B组人数/曝光": 5000,
+        "B组成功数": 715,
+        "方向": "提升越好"
+    },
+    {
+        "指标": "支付转化率",
+        "A组人数/曝光": 5000,
+        "A组成功数": 240,
+        "B组人数/曝光": 5000,
+        "B组成功数": 270,
+        "方向": "提升越好"
+    },
+    {
+        "指标": "尺码相关差评率",
+        "A组人数/曝光": 240,
+        "A组成功数": 31,
+        "B组人数/曝光": 270,
+        "B组成功数": 22,
+        "方向": "降低越好"
+    },
+    {
+        "指标": "退货率",
+        "A组人数/曝光": 240,
+        "A组成功数": 21,
+        "B组人数/曝光": 270,
+        "B组成功数": 20,
+        "方向": "降低越好"
+    }
+])
+
+result_rows = []
+
+for _, row in ab_data.iterrows():
+    rate_a = row["A组成功数"] / row["A组人数/曝光"]
+    rate_b = row["B组成功数"] / row["B组人数/曝光"]
+    uplift = (rate_b - rate_a) / rate_a if rate_a != 0 else 0
+    p_value = two_prop_pvalue(
+        row["A组成功数"],
+        row["A组人数/曝光"],
+        row["B组成功数"],
+        row["B组人数/曝光"]
+    )
+
+    if row["方向"] == "提升越好":
+        conclusion = "实验组更优" if rate_b > rate_a and p_value < 0.05 else "暂不显著"
+    else:
+        conclusion = "实验组更优" if rate_b < rate_a and p_value < 0.05 else "暂不显著"
+
+    result_rows.append({
+        "指标": row["指标"],
+        "A组": f"{rate_a:.2%}",
+        "B组": f"{rate_b:.2%}",
+        "相对变化": f"{uplift:.2%}",
+        "p-value": round(p_value, 4),
+        "是否显著": "是" if p_value < 0.05 else "否",
+        "结论": conclusion
+    })
+
+ab_result = pd.DataFrame(result_rows)
+
+st.markdown("### A/B 实验指标对比结果")
+st.dataframe(ab_result, use_container_width=True)
+
+st.markdown("### A/B 实验业务解读")
+
+sig_better = ab_result[ab_result["结论"] == "实验组更优"]
+
+if len(sig_better) >= 2:
+    st.success(
+        "实验组在多个核心指标上表现更优，说明详情页尺码说明优化策略具备推广价值。"
+        "建议优先在 Dresses、Blouses 等尺码问题较集中的类目中扩大应用，并持续监控退货率和差评率。"
+    )
+else:
+    st.warning(
+        "当前实验结果尚不充分，建议延长实验周期或扩大样本量后再判断是否推广。"
+    )
+st.markdown("### A/B 核心指标可视化")
+
+plot_df = pd.DataFrame({
+    "指标": ["点击率", "加购率", "支付转化率", "尺码相关差评率", "退货率"],
+    "A组": [0.082, 0.125, 0.048, 0.129, 0.0875],
+    "B组": [0.091, 0.143, 0.054, 0.0815, 0.0741]
+})
+
+st.bar_chart(plot_df.set_index("指标"))
+# ========== 14. AI 运营策略生成 Demo ==========
+st.header("八、AI 运营策略生成 Demo")
+
+st.markdown(
+    """
+    输入一条具体用户评论后，系统会自动识别情感倾向与用户痛点，
+    并基于 Prompt 生成详情页优化、客服回复话术和用户触达策略。  
+    支持 **中文评论、英文评论、中英混合评论**。
+    """
+)
+
+example_comment = (
+    "这件连衣裙款式还不错，但是尺码偏小，面料有点薄，颜色和图片也不太一样。"
+)
+
+comment_input = st.text_area(
+    "请输入一条用户评论：",
+    value=example_comment,
+    height=120
+)
+
+product_category = st.selectbox(
+    "请选择商品类别：",
+    [
+        "连衣裙 / Dresses",
+        "针织衫 / Knits",
+        "衬衫 / Blouses",
+        "裤子 / Pants",
+        "毛衣 / Sweaters",
+        "夹克 / Jackets",
+        "半身裙 / Skirts",
+        "未知 / Unknown"
+    ]
+)
+
+if st.button("生成 AI 运营策略"):
+    topics = identify_topics(comment_input)
+    sentiment = judge_sentiment(comment_input)
+    priority = judge_priority(topics, sentiment)
+    roles = match_roles(topics)
+    strategy = generate_strategy(comment_input, product_category, topics, sentiment, priority)
+    prompt = generate_prompt(comment_input, product_category, topics, sentiment, priority)
+
+    st.subheader("1. NLP 识别结果")
+
+    result_col1, result_col2, result_col3, result_col4 = st.columns(4)
+
+    with result_col1:
+        st.success(f"情感判断：{sentiment}")
+
+    with result_col2:
+        st.info(f"问题主题：{'、'.join(topics)}")
+
+    with result_col3:
+        st.warning(f"运营优先级：{priority}")
+
+    with result_col4:
+        st.write(f"适合处理角色：{roles}")
+
+    st.subheader("2. AI 运营策略建议")
+
+    st.markdown(f"**用户核心痛点：** {strategy['用户核心痛点']}")
+    st.markdown(f"**商品详情页优化建议：** {strategy['商品详情页优化建议']}")
+    st.markdown(f"**客服回复话术：** {strategy['客服回复话术']}")
+    st.markdown(f"**用户触达/运营策略：** {strategy['用户触达/运营策略']}")
+    st.markdown(f"**后续复盘指标：** {strategy['后续复盘指标']}")
+
+    with st.expander("查看可输入大模型的 Prompt 模板"):
+        st.code(prompt, language="text")
+
+st.divider()
+

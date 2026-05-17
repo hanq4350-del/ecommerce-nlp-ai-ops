@@ -1,38 +1,21 @@
-# E-commerce Review AI Ops System
+# 电商评论洞察与运营诊断看板
 
-基于 NLP 与 Prompt Engineering 的电商评论洞察与 AI 运营策略生成系统。
-
-## 项目简介
-
-本项目基于女性服装电商评论数据，搭建“指标监控—异常识别—NLP 问题归因—Prompt 策略生成”的分析流程，辅助运营人员从用户评论中识别核心痛点，并生成可执行的商品运营优化建议。
-
-项目不是训练大模型，而是将评论分析结果、异常识别结果和差评主题归因结构化为 Prompt 输入，模拟 AI 辅助商品运营决策场景。
+本项目基于电商评论数据，构建从指标监控、异常识别、NLP 问题归因、运营策略生成到 A/B 实验验证的完整数据分析闭环。
 
 ## 核心功能
 
-- 评论数据清洗与情感标签构建
-- 商品类目指标分析
-- 异常类目识别
-- 负向评论关键词提取
-- 差评主题归因
-- AI 运营策略生成 Demo
-- Streamlit 本地可视化页面
+- 评论总量、平均评分、推荐率、正负向评论占比监控
+- 商品类目异常识别
+- NLP 负向评论关键词与主题分析
+- 商品类别指标分析
+- 差评主题与运营策略表
+- A/B 实验策略效果验证
+- AI 辅助生成运营策略、客服话术和用户触达建议
 
-## 项目结构
+## 技术栈
 
-```text
-ecommerce-review-ai-ops
-├── app.py
-├── main.py
-├── requirements.txt
-├── figures
-│   ├── rating_distribution.png
-│   ├── sentiment_distribution.png
-│   ├── negative_keywords.png
-│   ├── negative_topic_distribution.png
-│   └── anomaly_negative_rate.png
-└── output
-    ├── class_metrics.csv
-    ├── anomaly_analysis.csv
-    ├── negative_topic_summary.csv
-    └── operation_strategy.csv
+Python、Pandas、Streamlit、Matplotlib、NLP、Prompt Engineering
+
+## 项目价值
+
+将非结构化评论文本转化为可量化、可归因、可行动的业务指标，辅助运营人员定位用户痛点并制定优化策略。
